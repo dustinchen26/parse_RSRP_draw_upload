@@ -1,0 +1,241 @@
+<!-- 
+  Copyright © [2023] [Dustin_Chen]. All rights reserved.
+  Author: Dustin_Chen
+  Email:  Dustin_Chen@compal.com or chuhpsdustin@gmail.com
+  
+  How to use: enter CPE, and use command to generate "output.txt". Paste the "output.txt" below, and push "Parse and draw RSRP"
+  【How to use】
+    0. Set the UE time correctly. ex: date -s "2024-03-12 10:22:10"
+    1. MobaXterm Session -> SSH -> Termnial settings -> Select "Log terminal output to": _DesktopDir_
+	2. ssh into CPE. ex: 10.205.164.10
+	3. use below command to read at+bnrinfo: 
+	   【CPE】read every 60 sec, until 3600 sec
+	   start_time=$(date +%s); while [ $(( $(date +%s) - start_time )) -lt 3600 ]; do echo -ne "$(date) - "; echo -ne "at+bnrinfo\r\n" | microcom -t 1000 /dev/ttyUSB1 | grep -E "dBm|bnrinfo"; sleep 60; done
+	   【Mifi】10 times
+	   for i in $(seq 1 10); do echo "$(date) - at+bnrinfo"; atcli at+bnrinfo; done
+	4. paste the _DesktopDir_ output file content below to parse
+
+-->
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload_Parse_RSRP_draw</title>
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+      line-height: 1.2;
+      font-size: 14px;
+    }
+
+    canvas {
+      max-width: 1500px;
+      max-height: 300px;
+      margin: 20px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: auto;
+      margin: 15px;
+    }
+
+    th,
+    td {
+      border: 1px solid #dddddd;
+      text-align: left;
+      padding: 6px;
+    }
+
+    .red {
+      color: red;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    var myChart; // Declare chart variable
+
+    function parseLog() {
+      var fileInput = document.getElementById('logInput');
+      var file = fileInput.files[0];
+
+      if (!file) {
+        alert('Please select a file.');
+        return;
+      }
+
+      var reader = new FileReader();
+      reader.onload = function(event) {
+        var inputText = event.target.result;
+
+        // Regular expressions to extract required information
+        var regex =
+          /(\w{3} \w{3}\s+\d{1,2} \d{2}:\d{2}:\d{2} \S+ \d{4}) - at\+bnrinfo[\s\S]*?averaged PUSCH TX power :(-?\d+) dBm[\s\S]*?RSRP (-?\d+) dBm[\s\S]*?SINR (\d+) dB[\s\S]*?RX0 power:.*?rsrp: (-?\d+) dBm[\s\S]*?RX1 power:.*?rsrp: (-?\d+) dBm[\s\S]*?RX2 power:.*?rsrp: (-?\d+) dBm[\s\S]*?RX3 power:.*?rsrp: (-?\d+) dBm/g;
+
+        // Match regular expressions against input text
+        var matches = inputText.matchAll(regex);
+
+        var times = [];
+        var rsrp = [];
+        var rx0Rsrp = [];
+        var rx1Rsrp = [];
+        var rx2Rsrp = [];
+        var rx3Rsrp = [];
+
+        // Get user-specified min and max values
+        var minRsrp = parseInt(document.getElementById('minRsrp').value);
+        var maxRsrp = parseInt(document.getElementById('maxRsrp').value);
+
+        for (const match of matches) {
+          if (match && match.length === 9) {
+            var currentRsrp = parseInt(match[3]);
+            var currentRx0Rsrp = parseInt(match[5]);
+            var currentRx1Rsrp = parseInt(match[6]);
+            var currentRx2Rsrp = parseInt(match[7]);
+            var currentRx3Rsrp = parseInt(match[8]);
+
+            if (currentRsrp >= minRsrp && currentRsrp <= maxRsrp &&
+              currentRx0Rsrp >= minRsrp && currentRx0Rsrp <= maxRsrp &&
+              currentRx1Rsrp >= minRsrp && currentRx1Rsrp <= maxRsrp &&
+              currentRx2Rsrp >= minRsrp && currentRx2Rsrp <= maxRsrp &&
+              currentRx3Rsrp >= minRsrp && currentRx3Rsrp <= maxRsrp) {
+              times.push(match[1]);
+              rsrp.push(currentRsrp);
+              rx0Rsrp.push(currentRx0Rsrp);
+              rx1Rsrp.push(currentRx1Rsrp);
+              rx2Rsrp.push(currentRx2Rsrp);
+              rx3Rsrp.push(currentRx3Rsrp);
+            }
+          }
+        }
+
+        // Clear previous chart data
+        if (myChart) {
+          myChart.destroy();
+        }
+
+        var ctx = document.getElementById('chart').getContext('2d');
+        myChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: times.map(time => time.substring(3, 19)), // Keep only month, day, hour, minute, second
+            datasets: [{
+                label: 'RSRP',
+                data: rsrp,
+                pointStyle: 'circle', // Set point style to circle
+                pointRadius: 0, // Set point radius to 2
+                pointBackgroundColor: 'rgba(0, 153, 0, 1)', // Change light blue to green
+                borderColor: 'rgba(0, 153, 0, 1)', // Change light blue to green
+                borderWidth: 1, // Width
+                fill: false
+              },
+              {
+                label: 'RX0 RSRP',
+                data: rx0Rsrp,
+                pointStyle: 'circle',
+                pointRadius: 0,
+                pointBackgroundColor: 'rgba(255, 102, 0, 1)', // Orange
+                borderColor: 'rgba(255, 102, 0, 1)',
+                borderWidth: 1,
+                fill: false
+              },
+              {
+                label: 'RX2 RSRP',
+                data: rx2Rsrp,
+                pointStyle: 'circle',
+                pointRadius: 0,
+                pointBackgroundColor: 'rgba(255, 200, 103, 1)', // Yellow
+                borderColor: 'rgba(253, 205, 3, 1)',
+                borderWidth: 1,
+                fill: false
+              },
+              {
+                label: 'RX1 RSRP',
+                data: rx1Rsrp,
+                pointStyle: 'circle',
+                pointRadius: 0,
+                pointBackgroundColor: 'rgba(150, 150, 150, 1)', // Gray
+                borderColor: 'rgba(150, 150, 150, 1)',
+                borderWidth: 1,
+                fill: false
+              },
+              {
+                label: 'RX3 RSRP',
+                data: rx3Rsrp,
+                pointStyle: 'circle',
+                pointRadius: 0,
+                pointBackgroundColor: 'rgba(0, 102, 204, 1)', // Dark blue
+                borderColor: 'rgba(0, 102, 204, 1)',
+                borderWidth: 1,
+                fill: false
+              }
+            ]
+          },
+
+          options: {
+            scales: {
+              xAxes: [{
+                type: 'time',
+                time: {
+                  displayFormats: {
+                    minute: 'HH:mm'
+                  }
+                }
+              }],
+              yAxes: [{
+                ticks: {
+                  beginAtZero: true
+                }
+              }]
+            }
+          }
+        });
+      };
+      reader.readAsText(file);
+    }
+  </script>
+</head>
+
+<body>
+  <h2>Upload_Parse_RSRP_draw</h2>
+  <p style="margin: 0;">Author: Dustin_Chen, email: <a href="mailto:Dustin_Chen@compal.com"
+      style="line-height: 1;">Dustin_Chen@compal.com</a> or <a href="mailto:chuhpsdustin@gmail.com"
+      style="line-height: 1;">chuhpsdustin@gmail.com</a></p>
+  <ul>
+    <li><strong>【How to use】</strong>
+      <ul>
+        <li>0. Set the UE time correctly. ex:<br>
+          <span class="red">date -s "2024-03-12 10:22:10"</span>
+        </li>
+        <li>1. MobaXterm Session -> SSH -> Termnial settings -> Select "Log terminal output to": _DesktopDir_</li>
+        <li>2. ssh into CPE. ex: 10.205.164.10 </li>
+        <li>3-1 【ATOP_CPE】use below command to read at+bnrinfo: read every 60 sec, until 3600 sec <br>
+          <span class="red">start_time=$(date +%s); while [ $(( $(date +%s) - start_time )) -lt 3600 ]; do echo -ne
+            "$(date) - "; echo -ne "at+bnrinfo\r\n" | microcom -t 1000 /dev/ttyUSB1 | grep -E "dBm|bnrinfo"; sleep 60;
+            done</span>
+        </li>
+        <li>3-2 【Mifi】use below command to run 10 times <br>
+          <span class="red">for i in $(seq 1 10); do echo "$(date) - at+bnrinfo"; atcli at+bnrinfo; done</span>
+        </li>
+        <li>4. Upload the _DesktopDir_ file to parse</li>
+        <li>5. Specify RSRP range:
+          <br>
+          Min RSRP: <input type="number" id="minRsrp" value="-140" style="width: 60px;">
+          Max RSRP: <input type="number" id="maxRsrp" value="-50" style="width: 60px;">
+        </li>
+      </ul>
+      <input type="file" id="logInput">
+    </li>
+    <li>
+      <button onclick="parseLog()">Parse and draw RSRP</button>
+    </li>
+
+    <canvas id="chart"></canvas>
+
+  </ul>
+</body>
+
+</html>
